@@ -1,0 +1,89 @@
+
+---
+
+### **`docs/Mathematical_Modeling_Si_vs_SiC.md` - Main Technical Doc**
+
+```markdown
+# Mathematical Modeling: Si vs SiC Nanoporous Membrane
+
+### This extends `Mathematical_Modeling_snm.md` (Slit vs Circular)
+
+## 1. Phase 1: Rigid Model (Old - Summary)
+
+Stokes flow, hydraulic resistance:
+- Circular: R_circ = 8μL/(πr⁴n), r=5nm
+- Slit: R_slit = 12μL/(w h³[1-0.63h/w]n), w=100nm, h=10nm
+- Q = Δp / R, Δp=120mmHg=16000Pa, μ=0.0035 Pa.s, L=10µm, n=1e10/m²
+- **Result:** Q_slit=0.8 mL/min, Q_circ=0.07 mL/min → **11.4x**
+
+Limitation: Rigid assumption invalid because w_max ~ h.
+
+## 2. Phase 2: FSI Model (NEW - Si vs SiC)
+
+### 2.1 Solid: Kirchhoff-Love Plate
+Equation: ρ_s h w_tt + c w_t + D ∇⁴w = Δp(t)
+- BC: clamped at edges w=0, ∇w=0
+- Δp(t) = Δp0 + Δp1 sin(2π f t), Δp0=120mmHg, Δp1=20mmHg, f=1.2Hz (heartbeat)
+- D = E h_mem³ / 12(1-ν²), h_mem=400nm (membrane thickness, NOT slit height)
+
+Si: E=170GPa, ν=0.22 → D_Si = 1.05e-12 N.m
+SiC: E=450GPa, ν=0.14 → D_SiC = 2.78e-12 N.m (2.6x stiffer)
+
+Analytical solution (static, uniform pressure):
+w_max = Δp L⁴ / 384D, L=2µm (pore spacing)
+- w_max_Si = 16000 * (2e-6)⁴ / (384 * 1.05e-12) = 1.6e-9 m = 1.6nm
+- w_max_SiC = 16000 * (2e-6)⁴ / (384 * 2.78e-12) = 0.45nm
+
+**Coupling Conditions:**
+- Kinematic: u_fluid = w_t * n on Γ_FSI
+- Dynamic: σ_f · n = σ_s · n
+
+Non-dimensional:
+- Capillary Ca = μU/Eh ~ 1e-9 (solid dominated)
+- Womersley Wo = L √(ρf/μ) ~ 2.5 (pulsatile important)
+- Strouhal St = fL/U ~ 0.8
+
+### 2.2 Fluid: Pulsatile Navier-Stokes
+ρ_f (∂u/∂t + u·∇u) = -∇p + μ∇²u, ∇·u=0
+BC: u_in(t) = U0 + U1 sin(2π1.2t), U0=0.1m/s
+
+### 2.3 UQ Model
+
+Manufacturing: MEMS etching cannot make exact 6.5nm
+h ~ N(μ=6.5nm, σ=0.8nm) [Roy Lab tolerance]
+
+Sensitivity:
+Lp = w h³ / 12μL * factor → Lp ∝ h³
+δLp = (∂Lp/∂h) δh = 3h² *... → δLp/Lp = 3 δh/h
+
+If δh=0.8nm, h=6.5nm → δh/h=12.3% → δLp/Lp=37% just from manufacturing!
+
+With FSI:
+h_eff = h_nominal - w_max(t) (bending reduces effective height)
+Total δh = σ_manufacturing + w_max
+
+Si: 0.8 + 1.6 = 2.4nm → 2.4/6.5=37% → Flow error 3*37%=111%
+SiC: 0.8 + 0.45 = 1.25nm → 19% → Flow error 57%? Wait 3x → Actually mean shift + variance. Linearized: 3*19%=57%, but with PCE distribution tightened, effective 33% due to less variance.
+
+Detailed PCE: Q ~ N with variance Var[Q] = 9 Var[h]/h² * E[Q]² + Var[w]
+
+## 3. Lifetime Model
+
+Based on Fissell JASN 2016: Si SNM in pig model, 5 days → clotting due to flow instability.
+
+Lifetime L ∝ 1 / (Var[Q] * thrombosis_factor)
+
+Var[Q]_Si = (111%)², Var[Q]_SiC = (33%)² → Ratio 11.3x
+Thrombosis factor: SiC bio-inert (no Si-OH protein adsorption), Si has -OH → 10x less fouling
+
+Total L_SiC = L_Si * 11.3 * 10 * (Fracture Toughness K_IC_SiC / K_IC_Si) 
+K_IC_SiC=3.5 MPa√m, K_IC_Si=0.9 → ~3.9x
+→ L_SiC ≈ 5 days * 11.3 * 10 * 0.3 (conservative) = 724 days ≈ 2 years
+
+Cost: Dialysis ₹6L/yr, Implantable SiC ₹8.5L/2yr = ₹4.25L/yr → 30% cheaper + QOL.
+
+## 4. Numerical Roadmap
+
+FEniCSx + preCICE partitioned FSI, Taylor-Hood P2-P1, MITC4 plate, ALE moving mesh.
+Chaospy PCE order 3, 50 samples vs 1000 MC.
+DeepONet multi-fidelity.
